@@ -43,11 +43,12 @@ def search():
     exclude = request.args.get('exclude', '')
 
     excluded_files = [e.strip() for e in exclude.split(',') if e.strip()]
+    extra_terms = [e.strip() for e in extra.split(',') if e.strip()]
 
     conn = get_conn()
     c = conn.cursor()
 
-    terms = [t for t in [query, extra] if t]
+    terms = [t for t in [query] + extra_terms if t]
 
     try:
         if not terms:

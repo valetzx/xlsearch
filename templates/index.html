@@ -18,16 +18,12 @@
             border-radius: 8px;
             overflow: hidden;
         }
-        #search-input,
-        #extra-input {
+        #search-input {
             flex: 1;
             padding: 15px 20px;
             font-size: 16px;
             border: none;
             outline: none;
-        }
-        #extra-input {
-            border-left: 1px solid #eee;
         }
         #search-button {
             background: #3498db;
@@ -44,6 +40,7 @@
             display: flex;
             gap: 10px;
         }
+        #extra-input,
         #exclude-input {
             flex: 1;
             padding: 10px 15px;
@@ -138,11 +135,11 @@
         
         <div class="search-box">
             <input type="text" id="search-input" placeholder="输入搜索关键词...">
-            <input type="text" id="extra-input" placeholder="额外关键字">
             <button id="search-button">搜索</button>
         </div>
 
         <div class="exclude-box">
+            <input type="text" id="extra-input" placeholder="额外关键字（逗号分隔）">
             <input type="text" id="exclude-input" placeholder="排除文件（逗号分隔）">
             <input type="password" id="password-input" placeholder="密码">
             <button id="reset-db-button">重置数据库</button>
