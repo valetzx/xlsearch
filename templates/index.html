@@ -37,17 +37,37 @@
         #search-button:hover { background: #2980b9; }
         .exclude-box {
             margin: 10px 0 20px;
+            display: flex;
+            gap: 10px;
         }
+        #extra-input,
         #exclude-input {
-            width: 100%;
+            flex: 1;
             padding: 10px 15px;
             font-size: 14px;
             border: 1px solid #ddd;
             border-radius: 8px;
         }
-        .stats { 
-            color: #7f8c8d; 
-            margin: 15px 0; 
+        #password-input {
+            width: 150px;
+            padding: 10px 15px;
+            font-size: 14px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        #reset-db-button {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 0 20px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: background 0.3s;
+        }
+        #reset-db-button:hover { background: #c0392b; }
+        .stats {
+            color: #7f8c8d;
+            margin: 15px 0;
             display: flex;
             justify-content: space-between;
         }
@@ -119,7 +139,10 @@
         </div>
 
         <div class="exclude-box">
+            <input type="text" id="extra-input" placeholder="额外关键字（逗号分隔）">
             <input type="text" id="exclude-input" placeholder="排除文件（逗号分隔）">
+            <input type="password" id="password-input" placeholder="密码">
+            <button id="reset-db-button">重置数据库</button>
         </div>
         
         <div class="stats">
@@ -137,32 +160,67 @@
         let currentPage = 1;
         let totalResults = 0;
         let currentQuery = '';
+        let currentExtra = '';
         let currentExclude = '';
-        
+
         document.getElementById('search-button').addEventListener('click', performSearch);
         document.getElementById('search-input').addEventListener('keyup', function(e) {
             if (e.key === 'Enter') performSearch();
         });
-        
+        document.getElementById('extra-input').addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') performSearch();
+        });
+        document.getElementById('reset-db-button').addEventListener('click', resetDatabase);
+
         function performSearch() {
             const query = document.getElementById('search-input').value.trim();
+            const extra = document.getElementById('extra-input').value.trim();
             currentQuery = query;
+            currentExtra = extra;
             currentExclude = document.getElementById('exclude-input').value.trim();
             currentPage = 1;
-            search(query, 1);
+            search(query, extra, 1);
         }
 
-        function search(query, page) {
+        function resetDatabase() {
+            const pwd = document.getElementById('password-input').value;
+            fetch('/reset_db', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: pwd })
+            })
+            .then(resp => resp.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('数据库已重置');
+                } else {
+                    alert(data.error || '重置失败');
+                }
+            })
+            .catch(err => {
+                console.error('重置失败:', err);
+                alert('重置失败');
+            });
+        }
+
+        function search(query, extra, page) {
             const startTime = performance.now();
             const offset = (page - 1) * LIMIT;
-            
-            document.getElementById('results-container').innerHTML = 
+
+            document.getElementById('results-container').innerHTML =
                 '<div class="loading">搜索中...</div>';
-            
+
             const excludeParam = encodeURIComponent(currentExclude);
-            fetch(`/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=${LIMIT}&exclude=${excludeParam}`)
+            const pwd = encodeURIComponent(document.getElementById('password-input').value);
+            const extraParam = encodeURIComponent(extra);
+            fetch(`/search?q=${encodeURIComponent(query)}&extra=${extraParam}&offset=${offset}&limit=${LIMIT}&exclude=${excludeParam}&password=${pwd}`)
                 .then(response => response.json())
                 .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                        document.getElementById('results-container').innerHTML = '<div class="empty-state">未授权</div>';
+                        return;
+                    }
                     const duration = Math.round(performance.now() - startTime);
                     renderResults(data.results, data.count, duration);
                     totalResults = data.count;
@@ -170,7 +228,7 @@
                 })
                 .catch(error => {
                     console.error('搜索错误:', error);
-                    document.getElementById('results-container').innerHTML = 
+                    document.getElementById('results-container').innerHTML =
                         '<div class="empty-state">搜索失败，请重试</div>';
                 });
         }
@@ -231,14 +289,15 @@
         
         function changePage(page) {
             currentPage = page;
-            search(currentQuery, page);
+            search(currentQuery, currentExtra, page);
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function loadDefaultResults() {
             currentQuery = '';
+            currentExtra = '';
             currentPage = 1;
-            search('', 1);
+            search('', '', 1);
         }
 
         window.onload = function() {
