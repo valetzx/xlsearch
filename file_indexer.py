@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import sqlite3
 import time
+import logging
 from config import XLSX_DIR, BATCH_SIZE
 from database import get_conn
 
@@ -23,7 +24,7 @@ def index_files():
                 if path in indexed_files and indexed_files[path] >= mod_time:
                     continue
                 
-                print(f"索引文件: {file}")
+                logging.info(f"索引文件: {file}")
                 try:
                     # 处理Excel文件
                     xl = pd.ExcelFile(path)
@@ -55,9 +56,9 @@ def index_files():
                             c.executemany("INSERT INTO fts_index VALUES (?, ?, ?, ?)", batch)
                     
                     conn.commit()
-                    print(f"完成索引: {file}, 工作表: {len(xl.sheet_names)}")
+                    logging.info(f"完成索引: {file}, 工作表: {len(xl.sheet_names)}")
                 
                 except Exception as e:
-                    print(f"索引失败 {file}: {str(e)}")
+                    logging.error(f"索引失败 {file}: {str(e)}")
     
     conn.close()
