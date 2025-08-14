@@ -18,12 +18,16 @@
             border-radius: 8px;
             overflow: hidden;
         }
-        #search-input {
+        #search-input,
+        #extra-input {
             flex: 1;
             padding: 15px 20px;
             font-size: 16px;
             border: none;
             outline: none;
+        }
+        #extra-input {
+            border-left: 1px solid #eee;
         }
         #search-button {
             background: #3498db;
@@ -134,6 +138,7 @@
         
         <div class="search-box">
             <input type="text" id="search-input" placeholder="输入搜索关键词...">
+            <input type="text" id="extra-input" placeholder="额外关键字">
             <button id="search-button">搜索</button>
         </div>
 
@@ -158,20 +163,26 @@
         let currentPage = 1;
         let totalResults = 0;
         let currentQuery = '';
+        let currentExtra = '';
         let currentExclude = '';
 
         document.getElementById('search-button').addEventListener('click', performSearch);
         document.getElementById('search-input').addEventListener('keyup', function(e) {
             if (e.key === 'Enter') performSearch();
         });
+        document.getElementById('extra-input').addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') performSearch();
+        });
         document.getElementById('reset-db-button').addEventListener('click', resetDatabase);
 
         function performSearch() {
             const query = document.getElementById('search-input').value.trim();
+            const extra = document.getElementById('extra-input').value.trim();
             currentQuery = query;
+            currentExtra = extra;
             currentExclude = document.getElementById('exclude-input').value.trim();
             currentPage = 1;
-            search(query, 1);
+            search(query, extra, 1);
         }
 
         function resetDatabase() {
@@ -195,17 +206,24 @@
             });
         }
 
-        function search(query, page) {
+        function search(query, extra, page) {
             const startTime = performance.now();
             const offset = (page - 1) * LIMIT;
-            
-            document.getElementById('results-container').innerHTML = 
+
+            document.getElementById('results-container').innerHTML =
                 '<div class="loading">搜索中...</div>';
-            
+
             const excludeParam = encodeURIComponent(currentExclude);
-            fetch(`/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=${LIMIT}&exclude=${excludeParam}`)
+            const pwd = encodeURIComponent(document.getElementById('password-input').value);
+            const extraParam = encodeURIComponent(extra);
+            fetch(`/search?q=${encodeURIComponent(query)}&extra=${extraParam}&offset=${offset}&limit=${LIMIT}&exclude=${excludeParam}&password=${pwd}`)
                 .then(response => response.json())
                 .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                        document.getElementById('results-container').innerHTML = '<div class="empty-state">未授权</div>';
+                        return;
+                    }
                     const duration = Math.round(performance.now() - startTime);
                     renderResults(data.results, data.count, duration);
                     totalResults = data.count;
@@ -213,7 +231,7 @@
                 })
                 .catch(error => {
                     console.error('搜索错误:', error);
-                    document.getElementById('results-container').innerHTML = 
+                    document.getElementById('results-container').innerHTML =
                         '<div class="empty-state">搜索失败，请重试</div>';
                 });
         }
@@ -274,14 +292,15 @@
         
         function changePage(page) {
             currentPage = page;
-            search(currentQuery, page);
+            search(currentQuery, currentExtra, page);
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function loadDefaultResults() {
             currentQuery = '';
+            currentExtra = '';
             currentPage = 1;
-            search('', 1);
+            search('', '', 1);
         }
 
         window.onload = function() {

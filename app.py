@@ -33,7 +33,11 @@ def home():
 
 @app.route('/search')
 def search():
+    if request.args.get('password') != AUTH_PASSWORD:
+        return jsonify(error='unauthorized'), 401
+
     query = request.args.get('q', '')
+    extra = request.args.get('extra', '')
     limit = int(request.args.get('limit', 50))
     offset = int(request.args.get('offset', 0))
     exclude = request.args.get('exclude', '')
@@ -43,8 +47,10 @@ def search():
     conn = get_conn()
     c = conn.cursor()
 
+    terms = [t for t in [query, extra] if t]
+
     try:
-        if not query:
+        if not terms:
             base_query = (
                 "SELECT f.path, fts.sheet_name, fts.row_index, "
                 "substr(fts.content, 1, 100) AS snippet "
@@ -79,15 +85,16 @@ def search():
             c.execute(count_query, count_params)
             full_count = c.fetchone()[0]
         else:
-            like_pattern = f"%{query}%"
+            first = terms[0]
+            like_conditions = " AND ".join(["fts.content LIKE ?"] * len(terms))
             base_query = (
                 "SELECT f.path, fts.sheet_name, fts.row_index, "
                 "substr(fts.content, CASE WHEN instr(fts.content, ?) > 25 "
                 "THEN instr(fts.content, ?) - 25 ELSE 1 END, 100) AS snippet "
                 "FROM fts_index fts JOIN files f ON f.id = fts.file_id "
-                "WHERE fts.content LIKE ?"
+                "WHERE " + like_conditions
             )
-            params = [query, query, like_pattern]
+            params = [first, first] + [f"%{t}%" for t in terms]
             if excluded_files:
                 placeholders = " AND ".join(["f.path NOT LIKE ?"] * len(excluded_files))
                 base_query += " AND " + placeholders
@@ -96,20 +103,24 @@ def search():
             params.extend([limit, offset])
             c.execute(base_query, params)
 
-            results = [
-                {
-                    "file": row[0],
-                    "sheet": row[1],
-                    "row": row[2] + 1,
-                    "snippet": row[3].replace(query, f"<b>{query}</b>") if row[3] else "",
-                }
-                for row in c.fetchall()
-            ]
+            results = []
+            for row in c.fetchall():
+                snippet = row[3] or ""
+                for t in terms:
+                    snippet = snippet.replace(t, f"<b>{t}</b>")
+                results.append(
+                    {
+                        "file": row[0],
+                        "sheet": row[1],
+                        "row": row[2] + 1,
+                        "snippet": snippet,
+                    }
+                )
             count_query = (
                 "SELECT COUNT(*) FROM fts_index fts JOIN files f ON f.id = fts.file_id "
-                "WHERE fts.content LIKE ?"
+                "WHERE " + like_conditions
             )
-            count_params = [like_pattern]
+            count_params = [f"%{t}%" for t in terms]
             if excluded_files:
                 placeholders = " AND ".join(["f.path NOT LIKE ?"] * len(excluded_files))
                 count_query += " AND " + placeholders
