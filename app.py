@@ -54,7 +54,7 @@ def search():
         if not terms:
             base_query = (
                 "SELECT f.path, fts.sheet_name, fts.row_index, "
-                "substr(fts.content, 1, 100) AS snippet "
+                "substr(fts.content, 1, 100) AS snippet, fts.content "
                 "FROM fts_index fts "
                 "JOIN files f ON f.id = fts.file_id"
             )
@@ -72,6 +72,7 @@ def search():
                     "sheet": row[1],
                     "row": row[2] + 1,
                     "snippet": row[3],
+                    "content": row[4],
                 }
                 for row in c.fetchall()
             ]
@@ -91,7 +92,7 @@ def search():
             base_query = (
                 "SELECT f.path, fts.sheet_name, fts.row_index, "
                 "substr(fts.content, CASE WHEN instr(fts.content, ?) > 25 "
-                "THEN instr(fts.content, ?) - 25 ELSE 1 END, 100) AS snippet "
+                "THEN instr(fts.content, ?) - 25 ELSE 1 END, 100) AS snippet, fts.content "
                 "FROM fts_index fts JOIN files f ON f.id = fts.file_id "
                 "WHERE " + like_conditions
             )
@@ -115,6 +116,7 @@ def search():
                         "sheet": row[1],
                         "row": row[2] + 1,
                         "snippet": snippet,
+                        "content": row[4],
                     }
                 )
             count_query = (
