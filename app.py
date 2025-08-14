@@ -63,37 +63,43 @@ def search():
             c.execute("SELECT COUNT(*) FROM fts_index")
             full_count = c.fetchone()[0]
         else:
-            # 使用FTS5进行高效搜索
+            like_pattern = f"%{query}%"
             c.execute(
                 """
                 SELECT
                     f.path,
                     fts.sheet_name,
                     fts.row_index,
-                    snippet(fts_index, 3, '<b>', '</b>', '...', 64) as snippet,
-                    COUNT(*) OVER() AS full_count
+                    substr(
+                        fts.content,
+                        CASE
+                            WHEN instr(fts.content, ?) > 25 THEN instr(fts.content, ?) - 25
+                            ELSE 1
+                        END,
+                        100
+                    ) AS snippet
                 FROM fts_index fts
                 JOIN files f ON f.id = fts.file_id
-                WHERE fts_index MATCH ?
-                ORDER BY rank
+                WHERE fts.content LIKE ?
                 LIMIT ? OFFSET ?
                 """,
-                (query, limit, offset),
+                (query, query, like_pattern, limit, offset),
             )
 
-            results = []
-            full_count = 0
-            for row in c.fetchall():
-                if full_count == 0:
-                    full_count = row[4]
-                results.append(
-                    {
-                        "file": row[0],
-                        "sheet": row[1],
-                        "row": row[2] + 1,
-                        "snippet": row[3],
-                    }
-                )
+            results = [
+                {
+                    "file": row[0],
+                    "sheet": row[1],
+                    "row": row[2] + 1,
+                    "snippet": row[3].replace(query, f"<b>{query}</b>") if row[3] else "",
+                }
+                for row in c.fetchall()
+            ]
+            c.execute(
+                "SELECT COUNT(*) FROM fts_index fts WHERE fts.content LIKE ?",
+                (like_pattern,),
+            )
+            full_count = c.fetchone()[0]
 
         return jsonify(results=results, count=full_count)
     except Exception:
