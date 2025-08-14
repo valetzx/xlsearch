@@ -131,8 +131,6 @@
         
         function performSearch() {
             const query = document.getElementById('search-input').value.trim();
-            if (!query) return;
-
             currentQuery = query;
             currentPage = 1;
             search(query, 1);

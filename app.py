@@ -9,17 +9,22 @@ from config import XLSX_DIR
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
+
 # 后台索引线程
 def background_indexer():
     while True:
         index_files()
         time.sleep(300)  # 每5分钟检查一次
 
-@app.before_first_request
+
 def initialize():
+    """Initialize database and start background indexer."""
     init_db()
-    # 启动后台索引线程
     threading.Thread(target=background_indexer, daemon=True).start()
+
+
+# 初始化应用程序
+initialize()
 
 @app.route('/')
 def home():
