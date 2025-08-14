@@ -1,154 +1,370 @@
-from flask import Flask, render_template, request, jsonify
-from database import init_db, get_conn
-from file_indexer import index_files
-import threading
-import time
-import logging
-import os
-from config import XLSX_DIR, DB_PATH, AUTH_PASSWORD
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XLSX文件搜索系统</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background: #f5f7fa; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 30px; }
+        h1 { color: #2c3e50; margin-bottom: 5px; }
+        .subtitle { color: #7f8c8d; font-size: 1.1em; }
+        .search-box {
+            display: flex;
+            margin: 30px 0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        #search-input {
+            flex: 1;
+            padding: 15px 20px;
+            font-size: 16px;
+            border: none;
+            outline: none;
+        }
+        #search-button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 0 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        #search-button:hover { background: #2980b9; }
+        .exclude-box {
+            margin: 10px 0 20px;
+            display: flex;
+            gap: 10px;
+        }
+        #extra-input,
+        #exclude-input {
+            flex: 1;
+            padding: 10px 15px;
+            font-size: 14px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        #password-input {
+            width: 150px;
+            padding: 10px 15px;
+            font-size: 14px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        #reset-db-button {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 0 20px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: background 0.3s;
+        }
+        #reset-db-button:hover { background: #c0392b; }
+        .stats {
+            color: #7f8c8d;
+            margin: 15px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+        .result-item {
+            background: white;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.2s;
+        }
+        .result-item:hover { transform: translateY(-3px); }
+        .file-path {
+            color: #2c3e50;
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 18px;
+            cursor: pointer;
+        }
+        .sheet-info {
+            color: #3498db;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        .snippet {
+            color: #34495e;
+            line-height: 1.6;
+            font-size: 16px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background: white;
+            margin: 10% auto;
+            padding: 20px;
+            border-radius: 8px;
+            width: 80%;
+            max-height: 80%;
+            overflow-y: auto;
+            line-height: 1.6;
+        }
+        .modal-content pre {
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .close {
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin: 30px 0;
+        }
+        .page-btn {
+            background: white;
+            border: 1px solid #ddd;
+            padding: 8px 15px;
+            margin: 0 5px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .page-btn.active {
+            background: #3498db;
+            color: white;
+            border-color: #3498db;
+        }
+        .loading {
+            text-align: center;
+            padding: 30px;
+            color: #7f8c8d;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 50px 20px;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>XLSX文件搜索系统</h1>
+            <div class="subtitle">搜索目录: <span id="dir-path">{{ xlsx_dir }}</span></div>
+        </header>
+        
+        <div class="search-box">
+            <input type="text" id="search-input" placeholder="输入搜索关键词...">
+            <button id="search-button">搜索</button>
+        </div>
 
-app = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
+        <div class="exclude-box">
+            <input type="text" id="extra-input" placeholder="额外关键字（逗号分隔）">
+            <input type="text" id="exclude-input" placeholder="排除文件（逗号分隔）">
+            <input type="password" id="password-input" placeholder="密码">
+            <button id="reset-db-button">重置数据库</button>
+        </div>
+        
+        <div class="stats">
+            <div id="result-count">0 个结果</div>
+            <div id="search-time">响应时间: 0ms</div>
+        </div>
+        
+        <div id="results-container"></div>
 
+        <div class="pagination" id="pagination"></div>
+    </div>
 
-# 后台索引线程
-def background_indexer():
-    while True:
-        index_files()
-        time.sleep(300)  # 每5分钟检查一次
+    <div id="detail-modal" class="modal">
+        <div class="modal-content">
+            <span id="modal-close" class="close">&times;</span>
+            <pre id="modal-text"></pre>
+        </div>
+    </div>
 
+    <script>
+        const LIMIT = 20;
+        let currentPage = 1;
+        let totalResults = 0;
+        let currentQuery = '';
+        let currentExtra = '';
+        let currentExclude = '';
+        let currentResults = [];
 
-def initialize():
-    """Initialize database and start background indexer."""
-    init_db()
-    threading.Thread(target=background_indexer, daemon=True).start()
+        document.getElementById('search-button').addEventListener('click', performSearch);
+        document.getElementById('search-input').addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') performSearch();
+        });
+        document.getElementById('extra-input').addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') performSearch();
+        });
+        document.getElementById('reset-db-button').addEventListener('click', resetDatabase);
+        document.getElementById('results-container').addEventListener('click', function(e) {
+            if (e.target.classList.contains('file-path')) {
+                const idx = e.target.getAttribute('data-index');
+                showDetail(currentResults[idx].content);
+            }
+        });
+        document.getElementById('modal-close').onclick = function() {
+            document.getElementById('detail-modal').style.display = 'none';
+        };
+        window.onclick = function(event) {
+            const modal = document.getElementById('detail-modal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        };
 
+        function performSearch() {
+            const query = document.getElementById('search-input').value.trim();
+            const extra = document.getElementById('extra-input').value.trim();
+            currentQuery = query;
+            currentExtra = extra;
+            currentExclude = document.getElementById('exclude-input').value.trim();
+            currentPage = 1;
+            search(query, extra, 1);
+        }
 
-# 初始化应用程序
-initialize()
-
-@app.route('/')
-def home():
-    return render_template('index.html', xlsx_dir=XLSX_DIR)
-
-@app.route('/search')
-def search():
-    if request.args.get('password') != AUTH_PASSWORD:
-        return jsonify(error='unauthorized'), 401
-
-    query = request.args.get('q', '')
-    extra = request.args.get('extra', '')
-    limit = int(request.args.get('limit', 50))
-    offset = int(request.args.get('offset', 0))
-    exclude = request.args.get('exclude', '')
-
-    excluded_files = [e.strip() for e in exclude.split(',') if e.strip()]
-    extra_terms = [e.strip() for e in extra.split(',') if e.strip()]
-
-    conn = get_conn()
-    c = conn.cursor()
-
-    terms = [t for t in [query] + extra_terms if t]
-
-    try:
-        if not terms:
-            base_query = (
-                "SELECT f.path, fts.sheet_name, fts.row_index, "
-                "substr(fts.content, 1, 100) AS snippet, fts.content "
-                "FROM fts_index fts "
-                "JOIN files f ON f.id = fts.file_id"
-            )
-            params = []
-            if excluded_files:
-                placeholders = " AND ".join(["f.path NOT LIKE ?"] * len(excluded_files))
-                base_query += " WHERE " + placeholders
-                params.extend([f"%{name}%" for name in excluded_files])
-            base_query += " LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
-            c.execute(base_query, params)
-            results = [
-                {
-                    "file": row[0],
-                    "sheet": row[1],
-                    "row": row[2] + 1,
-                    "snippet": row[3],
-                    "content": row[4],
+        function resetDatabase() {
+            const pwd = document.getElementById('password-input').value;
+            fetch('/reset_db', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: pwd })
+            })
+            .then(resp => resp.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('数据库已重置');
+                } else {
+                    alert(data.error || '重置失败');
                 }
-                for row in c.fetchall()
-            ]
-            count_query = (
-                "SELECT COUNT(*) FROM fts_index fts JOIN files f ON f.id = fts.file_id"
-            )
-            count_params = []
-            if excluded_files:
-                placeholders = " AND ".join(["f.path NOT LIKE ?"] * len(excluded_files))
-                count_query += " WHERE " + placeholders
-                count_params.extend([f"%{name}%" for name in excluded_files])
-            c.execute(count_query, count_params)
-            full_count = c.fetchone()[0]
-        else:
-            first = terms[0]
-            like_conditions = " AND ".join(["fts.content LIKE ?"] * len(terms))
-            base_query = (
-                "SELECT f.path, fts.sheet_name, fts.row_index, "
-                "substr(fts.content, CASE WHEN instr(fts.content, ?) > 25 "
-                "THEN instr(fts.content, ?) - 25 ELSE 1 END, 100) AS snippet, fts.content "
-                "FROM fts_index fts JOIN files f ON f.id = fts.file_id "
-                "WHERE " + like_conditions
-            )
-            params = [first, first] + [f"%{t}%" for t in terms]
-            if excluded_files:
-                placeholders = " AND ".join(["f.path NOT LIKE ?"] * len(excluded_files))
-                base_query += " AND " + placeholders
-                params.extend([f"%{name}%" for name in excluded_files])
-            base_query += " LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
-            c.execute(base_query, params)
+            })
+            .catch(err => {
+                console.error('重置失败:', err);
+                alert('重置失败');
+            });
+        }
 
-            results = []
-            for row in c.fetchall():
-                snippet = row[3] or ""
-                for t in terms:
-                    snippet = snippet.replace(t, f"<b>{t}</b>")
-                results.append(
-                    {
-                        "file": row[0],
-                        "sheet": row[1],
-                        "row": row[2] + 1,
-                        "snippet": snippet,
-                        "content": row[4],
+        function search(query, extra, page) {
+            const startTime = performance.now();
+            const offset = (page - 1) * LIMIT;
+
+            document.getElementById('results-container').innerHTML =
+                '<div class="loading">搜索中...</div>';
+
+            const excludeParam = encodeURIComponent(currentExclude);
+            const pwd = encodeURIComponent(document.getElementById('password-input').value);
+            const extraParam = encodeURIComponent(extra);
+            fetch(`/search?q=${encodeURIComponent(query)}&extra=${extraParam}&offset=${offset}&limit=${LIMIT}&exclude=${excludeParam}&password=${pwd}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                        document.getElementById('results-container').innerHTML = '<div class="empty-state">未授权</div>';
+                        return;
                     }
-                )
-            count_query = (
-                "SELECT COUNT(*) FROM fts_index fts JOIN files f ON f.id = fts.file_id "
-                "WHERE " + like_conditions
-            )
-            count_params = [f"%{t}%" for t in terms]
-            if excluded_files:
-                placeholders = " AND ".join(["f.path NOT LIKE ?"] * len(excluded_files))
-                count_query += " AND " + placeholders
-                count_params.extend([f"%{name}%" for name in excluded_files])
-            c.execute(count_query, count_params)
-            full_count = c.fetchone()[0]
+                    const duration = Math.round(performance.now() - startTime);
+                    renderResults(data.results, data.count, duration);
+                    totalResults = data.count;
+                    renderPagination();
+                })
+                .catch(error => {
+                    console.error('搜索错误:', error);
+                    document.getElementById('results-container').innerHTML =
+                        '<div class="empty-state">搜索失败，请重试</div>';
+                });
+        }
+        
+        function renderResults(results, count, duration) {
+            const container = document.getElementById('results-container');
+            document.getElementById('result-count').textContent = `${count} 个结果`;
+            document.getElementById('search-time').textContent = `响应时间: ${duration}ms`;
+            currentResults = results;
+            
+            if (results.length === 0) {
+                container.innerHTML = '<div class="empty-state">未找到匹配结果</div>';
+                return;
+            }
+            
+            let html = '';
+            results.forEach(result => {
+                const fileName = result.file.split('/').pop().split('\\').pop();
+                html += `
+                <div class="result-item">
+                    <div class="file-path">${fileName}</div>
+                    <div class="sheet-info">工作表: ${result.sheet} | 行号: ${result.row}</div>
+                    <div class="snippet">${result.snippet}</div>
+                </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+        
+        function renderPagination() {
+            if (totalResults <= LIMIT) {
+                document.getElementById('pagination').innerHTML = '';
+                return;
+            }
+            
+            const totalPages = Math.ceil(totalResults / LIMIT);
+            let html = '';
+            
+            // 上一页
+            if (currentPage > 1) {
+                html += `<button class="page-btn" onclick="changePage(${currentPage - 1})">上一页</button>`;
+            }
+            
+            // 页码
+            const startPage = Math.max(1, currentPage - 2);
+            const endPage = Math.min(totalPages, startPage + 4);
+            
+            for (let i = startPage; i <= endPage; i++) {
+                html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="changePage(${i})">${i}</button>`;
+            }
+            
+            // 下一页
+            if (currentPage < totalPages) {
+                html += `<button class="page-btn" onclick="changePage(${currentPage + 1})">下一页</button>`;
+            }
+            
+            document.getElementById('pagination').innerHTML = html;
+        }
+        
+        function changePage(page) {
+            currentPage = page;
+            search(currentQuery, currentExtra, page);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
 
-        return jsonify(results=results, count=full_count)
-    except Exception:
-        app.logger.exception("搜索失败")
-        return jsonify(results=[], count=0, error="internal error"), 500
-    finally:
-        conn.close()
+        function showDetail(text) {
+            document.getElementById('modal-text').textContent = text;
+            document.getElementById('detail-modal').style.display = 'block';
+        }
 
+        function loadDefaultResults() {
+            currentQuery = '';
+            currentExtra = '';
+            currentPage = 1;
+            search('', '', 1);
+        }
 
-@app.route('/reset_db', methods=['POST'])
-def reset_db():
-    data = request.get_json() or {}
-    if data.get('password') != AUTH_PASSWORD:
-        return jsonify(error='unauthorized'), 401
-    if os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
-    init_db()
-    index_files()
-    return jsonify(status='ok')
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, threaded=True)
+        window.onload = function() {
+            loadDefaultResults();
+        };
+    </script>
+</body>
+</html>
