@@ -132,12 +132,12 @@
         function performSearch() {
             const query = document.getElementById('search-input').value.trim();
             if (!query) return;
-            
+
             currentQuery = query;
             currentPage = 1;
             search(query, 1);
         }
-        
+
         function search(query, page) {
             const startTime = performance.now();
             const offset = (page - 1) * LIMIT;
@@ -219,10 +219,15 @@
             search(currentQuery, page);
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
-        
-        // 初始加载时自动索引文件
+
+        function loadDefaultResults() {
+            currentQuery = '';
+            currentPage = 1;
+            search('', 1);
+        }
+
         window.onload = function() {
-            fetch('/').then(() => console.log('后台索引已启动'));
+            loadDefaultResults();
         };
     </script>
 </body>
