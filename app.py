@@ -4,7 +4,8 @@ from file_indexer import index_files
 import threading
 import time
 import logging
-from config import XLSX_DIR
+import os
+from config import XLSX_DIR, DB_PATH, AUTH_PASSWORD
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -122,6 +123,18 @@ def search():
         return jsonify(results=[], count=0, error="internal error"), 500
     finally:
         conn.close()
+
+
+@app.route('/reset_db', methods=['POST'])
+def reset_db():
+    data = request.get_json() or {}
+    if data.get('password') != AUTH_PASSWORD:
+        return jsonify(error='unauthorized'), 401
+    if os.path.exists(DB_PATH):
+        os.remove(DB_PATH)
+    init_db()
+    index_files()
+    return jsonify(status='ok')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, threaded=True)

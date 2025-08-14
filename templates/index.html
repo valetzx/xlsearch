@@ -37,17 +37,36 @@
         #search-button:hover { background: #2980b9; }
         .exclude-box {
             margin: 10px 0 20px;
+            display: flex;
+            gap: 10px;
         }
         #exclude-input {
-            width: 100%;
+            flex: 1;
             padding: 10px 15px;
             font-size: 14px;
             border: 1px solid #ddd;
             border-radius: 8px;
         }
-        .stats { 
-            color: #7f8c8d; 
-            margin: 15px 0; 
+        #password-input {
+            width: 150px;
+            padding: 10px 15px;
+            font-size: 14px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        #reset-db-button {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 0 20px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: background 0.3s;
+        }
+        #reset-db-button:hover { background: #c0392b; }
+        .stats {
+            color: #7f8c8d;
+            margin: 15px 0;
             display: flex;
             justify-content: space-between;
         }
@@ -120,6 +139,8 @@
 
         <div class="exclude-box">
             <input type="text" id="exclude-input" placeholder="排除文件（逗号分隔）">
+            <input type="password" id="password-input" placeholder="密码">
+            <button id="reset-db-button">重置数据库</button>
         </div>
         
         <div class="stats">
@@ -138,18 +159,40 @@
         let totalResults = 0;
         let currentQuery = '';
         let currentExclude = '';
-        
+
         document.getElementById('search-button').addEventListener('click', performSearch);
         document.getElementById('search-input').addEventListener('keyup', function(e) {
             if (e.key === 'Enter') performSearch();
         });
-        
+        document.getElementById('reset-db-button').addEventListener('click', resetDatabase);
+
         function performSearch() {
             const query = document.getElementById('search-input').value.trim();
             currentQuery = query;
             currentExclude = document.getElementById('exclude-input').value.trim();
             currentPage = 1;
             search(query, 1);
+        }
+
+        function resetDatabase() {
+            const pwd = document.getElementById('password-input').value;
+            fetch('/reset_db', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: pwd })
+            })
+            .then(resp => resp.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('数据库已重置');
+                } else {
+                    alert(data.error || '重置失败');
+                }
+            })
+            .catch(err => {
+                console.error('重置失败:', err);
+                alert('重置失败');
+            });
         }
 
         function search(query, page) {
