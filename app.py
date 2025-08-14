@@ -63,37 +63,40 @@ def search():
             c.execute("SELECT COUNT(*) FROM fts_index")
             full_count = c.fetchone()[0]
         else:
-            # 使用FTS5进行高效搜索
+            # 模糊搜索，支持中文字符匹配
+            like_query = f"%{query}%"
             c.execute(
                 """
                 SELECT
                     f.path,
                     fts.sheet_name,
                     fts.row_index,
-                    snippet(fts_index, 3, '<b>', '</b>', '...', 64) as snippet,
-                    COUNT(*) OVER() AS full_count
+                    fts.content
                 FROM fts_index fts
                 JOIN files f ON f.id = fts.file_id
-                WHERE fts_index MATCH ?
-                ORDER BY rank
+                WHERE fts.content LIKE ?
                 LIMIT ? OFFSET ?
                 """,
-                (query, limit, offset),
+                (like_query, limit, offset),
             )
 
             results = []
-            full_count = 0
             for row in c.fetchall():
-                if full_count == 0:
-                    full_count = row[4]
+                content = row[3]
+                index = content.find(query)
+                start = max(index - 20, 0)
+                snippet = content[start : start + 100]
+                snippet = snippet.replace(query, f"<b>{query}</b>")
                 results.append(
                     {
                         "file": row[0],
                         "sheet": row[1],
                         "row": row[2] + 1,
-                        "snippet": row[3],
+                        "snippet": snippet,
                     }
                 )
+            c.execute("SELECT COUNT(*) FROM fts_index WHERE content LIKE ?", (like_query,))
+            full_count = c.fetchone()[0]
 
         return jsonify(results=results, count=full_count)
     except Exception:
