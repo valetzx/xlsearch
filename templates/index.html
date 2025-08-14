@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XLSX文件搜索系统</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background: #f5f7fa; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 30px; }
+        h1 { color: #2c3e50; margin-bottom: 5px; }
+        .subtitle { color: #7f8c8d; font-size: 1.1em; }
+        .search-box { 
+            display: flex; 
+            margin: 30px 0; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        #search-input {
+            flex: 1;
+            padding: 15px 20px;
+            font-size: 16px;
+            border: none;
+            outline: none;
+        }
+        #search-button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 0 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        #search-button:hover { background: #2980b9; }
+        .stats { 
+            color: #7f8c8d; 
+            margin: 15px 0; 
+            display: flex;
+            justify-content: space-between;
+        }
+        .result-item {
+            background: white;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.2s;
+        }
+        .result-item:hover { transform: translateY(-3px); }
+        .file-path { 
+            color: #2c3e50; 
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 18px;
+        }
+        .sheet-info { 
+            color: #3498db; 
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        .snippet { 
+            color: #34495e; 
+            line-height: 1.6;
+            font-size: 16px;
+        }
+        .pagination { 
+            display: flex; 
+            justify-content: center; 
+            margin: 30px 0;
+        }
+        .page-btn {
+            background: white;
+            border: 1px solid #ddd;
+            padding: 8px 15px;
+            margin: 0 5px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .page-btn.active {
+            background: #3498db;
+            color: white;
+            border-color: #3498db;
+        }
+        .loading {
+            text-align: center;
+            padding: 30px;
+            color: #7f8c8d;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 50px 20px;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>XLSX文件搜索系统</h1>
+            <div class="subtitle">搜索目录: <span id="dir-path">{{ xlsx_dir }}</span></div>
+        </header>
+        
+        <div class="search-box">
+            <input type="text" id="search-input" placeholder="输入搜索关键词...">
+            <button id="search-button">搜索</button>
+        </div>
+        
+        <div class="stats">
+            <div id="result-count">0 个结果</div>
+            <div id="search-time">响应时间: 0ms</div>
+        </div>
+        
+        <div id="results-container"></div>
+        
+        <div class="pagination" id="pagination"></div>
+    </div>
+
+    <script>
+        const LIMIT = 20;
+        let currentPage = 1;
+        let totalResults = 0;
+        let currentQuery = '';
+        
+        document.getElementById('search-button').addEventListener('click', performSearch);
+        document.getElementById('search-input').addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') performSearch();
+        });
+        
+        function performSearch() {
+            const query = document.getElementById('search-input').value.trim();
+            if (!query) return;
+            
+            currentQuery = query;
+            currentPage = 1;
+            search(query, 1);
+        }
+        
+        function search(query, page) {
+            const startTime = performance.now();
+            const offset = (page - 1) * LIMIT;
+            
+            document.getElementById('results-container').innerHTML = 
+                '<div class="loading">搜索中...</div>';
+            
+            fetch(`/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=${LIMIT}`)
+                .then(response => response.json())
+                .then(data => {
+                    const duration = Math.round(performance.now() - startTime);
+                    renderResults(data.results, data.count, duration);
+                    totalResults = data.count;
+                    renderPagination();
+                })
+                .catch(error => {
+                    console.error('搜索错误:', error);
+                    document.getElementById('results-container').innerHTML = 
+                        '<div class="empty-state">搜索失败，请重试</div>';
+                });
+        }
+        
+        function renderResults(results, count, duration) {
+            const container = document.getElementById('results-container');
+            document.getElementById('result-count').textContent = `${count} 个结果`;
+            document.getElementById('search-time').textContent = `响应时间: ${duration}ms`;
+            
+            if (results.length === 0) {
+                container.innerHTML = '<div class="empty-state">未找到匹配结果</div>';
+                return;
+            }
+            
+            let html = '';
+            results.forEach(result => {
+                html += `
+                <div class="result-item">
+                    <div class="file-path">${result.file}</div>
+                    <div class="sheet-info">工作表: ${result.sheet} | 行号: ${result.row}</div>
+                    <div class="snippet">${result.snippet}</div>
+                </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+        
+        function renderPagination() {
+            if (totalResults <= LIMIT) {
+                document.getElementById('pagination').innerHTML = '';
+                return;
+            }
+            
+            const totalPages = Math.ceil(totalResults / LIMIT);
+            let html = '';
+            
+            // 上一页
+            if (currentPage > 1) {
+                html += `<button class="page-btn" onclick="changePage(${currentPage - 1})">上一页</button>`;
+            }
+            
+            // 页码
+            const startPage = Math.max(1, currentPage - 2);
+            const endPage = Math.min(totalPages, startPage + 4);
+            
+            for (let i = startPage; i <= endPage; i++) {
+                html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="changePage(${i})">${i}</button>`;
+            }
+            
+            // 下一页
+            if (currentPage < totalPages) {
+                html += `<button class="page-btn" onclick="changePage(${currentPage + 1})">下一页</button>`;
+            }
+            
+            document.getElementById('pagination').innerHTML = html;
+        }
+        
+        function changePage(page) {
+            currentPage = page;
+            search(currentQuery, page);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        
+        // 初始加载时自动索引文件
+        window.onload = function() {
+            fetch('/').then(() => console.log('后台索引已启动'));
+        };
+    </script>
+</body>
+</html>
