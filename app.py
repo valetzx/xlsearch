@@ -63,14 +63,16 @@ def search():
             c.execute("SELECT COUNT(*) FROM fts_index")
             full_count = c.fetchone()[0]
         else:
-            # 使用FTS5进行高效搜索
+            # 使用FTS5进行高效搜索并支持前缀匹配
+            tokens = [token + "*" for token in query.split()]
+            fts_query = " ".join(tokens)
             c.execute(
                 """
                 SELECT
                     f.path,
                     fts.sheet_name,
                     fts.row_index,
-                    snippet(fts_index, 3, '<b>', '</b>', '...', 64) as snippet,
+                    substr(fts.content, 1, 100) AS snippet,
                     COUNT(*) OVER() AS full_count
                 FROM fts_index fts
                 JOIN files f ON f.id = fts.file_id
@@ -78,7 +80,7 @@ def search():
                 ORDER BY rank
                 LIMIT ? OFFSET ?
                 """,
-                (query, limit, offset),
+                (fts_query, limit, offset),
             )
 
             results = []
