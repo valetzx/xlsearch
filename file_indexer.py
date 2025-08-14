@@ -39,7 +39,7 @@ def index_files():
                     
                     # 处理每个工作表
                     for sheet_name in xl.sheet_names:
-                        df = xl.parse(sheet_name, dtype=str)
+                        df = xl.parse(sheet_name, dtype=str, header=None)
                         
                         # 批量处理数据
                         batch = []

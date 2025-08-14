@@ -35,22 +35,29 @@ def search():
     query = request.args.get('q', '')
     limit = int(request.args.get('limit', 50))
     offset = int(request.args.get('offset', 0))
+    exclude = request.args.get('exclude', '')
+
+    excluded_files = [e.strip() for e in exclude.split(',') if e.strip()]
 
     conn = get_conn()
     c = conn.cursor()
 
     try:
         if not query:
-            c.execute(
-                """
-                SELECT f.path, fts.sheet_name, fts.row_index,
-                       substr(fts.content, 1, 100) AS snippet
-                FROM fts_index fts
-                JOIN files f ON f.id = fts.file_id
-                LIMIT ? OFFSET ?
-                """,
-                (limit, offset),
+            base_query = (
+                "SELECT f.path, fts.sheet_name, fts.row_index, "
+                "substr(fts.content, 1, 100) AS snippet "
+                "FROM fts_index fts "
+                "JOIN files f ON f.id = fts.file_id"
             )
+            params = []
+            if excluded_files:
+                placeholders = " AND ".join(["f.path NOT LIKE ?"] * len(excluded_files))
+                base_query += " WHERE " + placeholders
+                params.extend([f"%{name}%" for name in excluded_files])
+            base_query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            c.execute(base_query, params)
             results = [
                 {
                     "file": row[0],
@@ -60,31 +67,33 @@ def search():
                 }
                 for row in c.fetchall()
             ]
-            c.execute("SELECT COUNT(*) FROM fts_index")
+            count_query = (
+                "SELECT COUNT(*) FROM fts_index fts JOIN files f ON f.id = fts.file_id"
+            )
+            count_params = []
+            if excluded_files:
+                placeholders = " AND ".join(["f.path NOT LIKE ?"] * len(excluded_files))
+                count_query += " WHERE " + placeholders
+                count_params.extend([f"%{name}%" for name in excluded_files])
+            c.execute(count_query, count_params)
             full_count = c.fetchone()[0]
         else:
             like_pattern = f"%{query}%"
-            c.execute(
-                """
-                SELECT
-                    f.path,
-                    fts.sheet_name,
-                    fts.row_index,
-                    substr(
-                        fts.content,
-                        CASE
-                            WHEN instr(fts.content, ?) > 25 THEN instr(fts.content, ?) - 25
-                            ELSE 1
-                        END,
-                        100
-                    ) AS snippet
-                FROM fts_index fts
-                JOIN files f ON f.id = fts.file_id
-                WHERE fts.content LIKE ?
-                LIMIT ? OFFSET ?
-                """,
-                (query, query, like_pattern, limit, offset),
+            base_query = (
+                "SELECT f.path, fts.sheet_name, fts.row_index, "
+                "substr(fts.content, CASE WHEN instr(fts.content, ?) > 25 "
+                "THEN instr(fts.content, ?) - 25 ELSE 1 END, 100) AS snippet "
+                "FROM fts_index fts JOIN files f ON f.id = fts.file_id "
+                "WHERE fts.content LIKE ?"
             )
+            params = [query, query, like_pattern]
+            if excluded_files:
+                placeholders = " AND ".join(["f.path NOT LIKE ?"] * len(excluded_files))
+                base_query += " AND " + placeholders
+                params.extend([f"%{name}%" for name in excluded_files])
+            base_query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            c.execute(base_query, params)
 
             results = [
                 {
@@ -95,10 +104,16 @@ def search():
                 }
                 for row in c.fetchall()
             ]
-            c.execute(
-                "SELECT COUNT(*) FROM fts_index fts WHERE fts.content LIKE ?",
-                (like_pattern,),
+            count_query = (
+                "SELECT COUNT(*) FROM fts_index fts JOIN files f ON f.id = fts.file_id "
+                "WHERE fts.content LIKE ?"
             )
+            count_params = [like_pattern]
+            if excluded_files:
+                placeholders = " AND ".join(["f.path NOT LIKE ?"] * len(excluded_files))
+                count_query += " AND " + placeholders
+                count_params.extend([f"%{name}%" for name in excluded_files])
+            c.execute(count_query, count_params)
             full_count = c.fetchone()[0]
 
         return jsonify(results=results, count=full_count)

@@ -11,9 +11,9 @@
         header { text-align: center; margin-bottom: 30px; }
         h1 { color: #2c3e50; margin-bottom: 5px; }
         .subtitle { color: #7f8c8d; font-size: 1.1em; }
-        .search-box { 
-            display: flex; 
-            margin: 30px 0; 
+        .search-box {
+            display: flex;
+            margin: 30px 0;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
             border-radius: 8px;
             overflow: hidden;
@@ -35,6 +35,16 @@
             transition: background 0.3s;
         }
         #search-button:hover { background: #2980b9; }
+        .exclude-box {
+            margin: 10px 0 20px;
+        }
+        #exclude-input {
+            width: 100%;
+            padding: 10px 15px;
+            font-size: 14px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
         .stats { 
             color: #7f8c8d; 
             margin: 15px 0; 
@@ -107,6 +117,10 @@
             <input type="text" id="search-input" placeholder="输入搜索关键词...">
             <button id="search-button">搜索</button>
         </div>
+
+        <div class="exclude-box">
+            <input type="text" id="exclude-input" placeholder="排除文件（逗号分隔）">
+        </div>
         
         <div class="stats">
             <div id="result-count">0 个结果</div>
@@ -123,6 +137,7 @@
         let currentPage = 1;
         let totalResults = 0;
         let currentQuery = '';
+        let currentExclude = '';
         
         document.getElementById('search-button').addEventListener('click', performSearch);
         document.getElementById('search-input').addEventListener('keyup', function(e) {
@@ -132,6 +147,7 @@
         function performSearch() {
             const query = document.getElementById('search-input').value.trim();
             currentQuery = query;
+            currentExclude = document.getElementById('exclude-input').value.trim();
             currentPage = 1;
             search(query, 1);
         }
@@ -143,7 +159,8 @@
             document.getElementById('results-container').innerHTML = 
                 '<div class="loading">搜索中...</div>';
             
-            fetch(`/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=${LIMIT}`)
+            const excludeParam = encodeURIComponent(currentExclude);
+            fetch(`/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=${LIMIT}&exclude=${excludeParam}`)
                 .then(response => response.json())
                 .then(data => {
                     const duration = Math.round(performance.now() - startTime);
